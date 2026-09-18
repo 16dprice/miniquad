@@ -129,18 +129,48 @@ impl std::fmt::Display for HeadlessError {
 
 impl std::error::Error for HeadlessError {}
 
-/// Make a current GLES2 context with no window system behind it.
+/// Open and initialise an EGL display that needs no window system.
 ///
-/// Distinct from [`egl::create_egl_context`] in three ways that all follow
-/// from there being no window: the display comes from `EGL_DEFAULT_DISPLAY`
-/// rather than an X11 `Display*`, the config must be `EGL_PBUFFER_BIT` rather
-/// than `EGL_WINDOW_BIT`, and the surface is a pbuffer. `sample_count` plays
-/// no part: multisampling belongs to the surface, and nothing draws to it.
-unsafe fn create_pbuffer_context(
-    egl_lib: &mut egl::LibEgl,
-    width: i32,
-    height: i32,
-) -> Result<(egl::EGLDisplay, egl::EGLContext, egl::EGLSurface), HeadlessError> {
+/// Two ways, in order, because the obvious one is not enough on a headless
+/// Linux box:
+///
+/// 1. **`EGL_PLATFORM_SURFACELESS_MESA`**, through `eglGetPlatformDisplayEXT`.
+///    This names a platform that is not a window system, which is exactly the
+///    situation.
+/// 2. **`EGL_DEFAULT_DISPLAY`**, the fallback. On a driver without the
+///    surfaceless extension — or a non-Mesa one that offers a usable default
+///    anyway — this is still the right call.
+///
+/// The first is tried first because `EGL_DEFAULT_DISPLAY` is actively wrong on
+/// a stock Linux image: the driver reads it as "the X11 display", hands back a
+/// non-null `EGLDisplay`, and then `eglInitialize` fails because no X server
+/// is listening. That failure is what a CI executor with no display hits, and
+/// it looks like a broken driver rather than a missing window system.
+///
+/// Whichever opens, the initialised `EGLDisplay` is returned and the chosen
+/// route is printed, so a log says which platform answered rather than leaving
+/// a future Mesa change to be guessed at.
+unsafe fn open_display(egl_lib: &mut egl::LibEgl) -> Result<egl::EGLDisplay, HeadlessError> {
+    let get_platform_display: Option<egl::GetPlatformDisplayExt> = {
+        let name = std::ffi::CString::new("eglGetPlatformDisplayEXT").unwrap();
+        (egl_lib.eglGetProcAddress)(name.as_ptr() as _)
+            .map(|f| std::mem::transmute::<_, egl::GetPlatformDisplayExt>(f))
+    };
+
+    if let Some(get_platform_display) = get_platform_display {
+        let display = get_platform_display(
+            egl::EGL_PLATFORM_SURFACELESS_MESA as egl::EGLint,
+            std::ptr::null_mut(),
+            std::ptr::null(),
+        );
+        if display != egl::EGL_NO_DISPLAY
+            && (egl_lib.eglInitialize)(display, std::ptr::null_mut(), std::ptr::null_mut()) != 0
+        {
+            eprintln!("miniquad: headless EGL on EGL_PLATFORM_SURFACELESS_MESA");
+            return Ok(display);
+        }
+    }
+
     let display = (egl_lib.eglGetDisplay)(egl::EGL_DEFAULT_DISPLAY);
     if display == egl::EGL_NO_DISPLAY {
         return Err(HeadlessError::NoDisplay);
@@ -148,10 +178,29 @@ unsafe fn create_pbuffer_context(
     if (egl_lib.eglInitialize)(display, std::ptr::null_mut(), std::ptr::null_mut()) == 0 {
         return Err(HeadlessError::InitializeFailed);
     }
+    eprintln!("miniquad: headless EGL on EGL_DEFAULT_DISPLAY");
+    Ok(display)
+}
 
-    // Depth and stencil are asked for on the config to keep it the same shape
-    // as the windowed path, but the depth/stencil that actually gets used is
-    // the offscreen framebuffer's own renderbuffer, not the pbuffer's.
+/// Make a current GLES2 context with no window system behind it.
+///
+/// Distinct from [`egl::create_egl_context`] in three ways that all follow
+/// from there being no window: the display comes from [`open_display`] rather
+/// than an X11 `Display*`, the config must be `EGL_PBUFFER_BIT` rather than
+/// `EGL_WINDOW_BIT`, and the surface is a pbuffer. `sample_count` plays no
+/// part: multisampling belongs to the surface, and nothing draws to it.
+unsafe fn create_pbuffer_context(
+    egl_lib: &mut egl::LibEgl,
+    width: i32,
+    height: i32,
+) -> Result<(egl::EGLDisplay, egl::EGLContext, egl::EGLSurface), HeadlessError> {
+    let display = open_display(egl_lib)?;
+
+    // No depth or stencil is asked for, deliberately. Nothing is ever drawn to
+    // the pbuffer — the depth and stencil that get used are the offscreen
+    // framebuffer's own renderbuffer — so requiring them here would only
+    // narrow the candidate set, and a driver that offers no pbuffer config
+    // with 24/8 would fail for a buffer this run does not touch.
     #[rustfmt::skip]
     let cfg_attributes = [
         egl::EGL_SURFACE_TYPE, egl::EGL_PBUFFER_BIT,
@@ -160,8 +209,6 @@ unsafe fn create_pbuffer_context(
         egl::EGL_GREEN_SIZE, 8,
         egl::EGL_BLUE_SIZE, 8,
         egl::EGL_ALPHA_SIZE, 8,
-        egl::EGL_DEPTH_SIZE, 24,
-        egl::EGL_STENCIL_SIZE, 8,
         egl::EGL_NONE,
     ];
     let mut config: egl::EGLConfig = egl::null_mut();
