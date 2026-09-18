@@ -246,10 +246,13 @@ pub struct Conf {
     /// passes and framebuffer readback all work as usual. Meant for tests
     /// and CI machines with no display attached.
     ///
-    /// Currently honored on macOS with [`AppleGfxApi::OpenGl`] (where it also
-    /// creates no `NSApplication`, so nothing appears in the Dock and no
-    /// focus moves). Other backends ignore it and open a window as usual.
-    /// `sample_count` is ignored for a headless run.
+    /// Honored on macOS with [`AppleGfxApi::OpenGl`] (where it also creates
+    /// no `NSApplication`, so nothing appears in the Dock and no focus
+    /// moves), and on Linux, where it takes an EGL pbuffer context off
+    /// `EGL_DEFAULT_DISPLAY` and so needs neither an X11 nor a Wayland
+    /// server — [`Platform::linux_backend`] plays no part. Other backends
+    /// ignore it and open a window as usual. `sample_count` is ignored for a
+    /// headless run.
     /// Defaults to `false`.
     pub headless: bool,
 

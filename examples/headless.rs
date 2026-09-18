@@ -4,6 +4,10 @@
 //! from the middle of the triangle and one from a corner, checks both, and
 //! quits. Run it from a terminal: nothing should appear on screen or in the
 //! Dock, and it should exit 0 within a second.
+//!
+//! It is also the check that the Linux path works with no display server at
+//! all — `env -u DISPLAY -u WAYLAND_DISPLAY cargo run --example headless`
+//! passes on a machine with only Mesa's software EGL installed.
 
 use miniquad::*;
 

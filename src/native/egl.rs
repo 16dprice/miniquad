@@ -20,6 +20,10 @@ use std::fmt::Display;
 pub const EGL_SUCCESS: u32 = 12288;
 
 pub const EGL_WINDOW_BIT: u32 = 4;
+pub const EGL_PBUFFER_BIT: u32 = 1;
+
+pub const EGL_RENDERABLE_TYPE: u32 = 12352;
+pub const EGL_OPENGL_ES2_BIT: u32 = 4;
 
 pub const EGL_ALPHA_SIZE: u32 = 12321;
 pub const EGL_BLUE_SIZE: u32 = 12322;
@@ -34,6 +38,13 @@ pub const EGL_HEIGHT: u32 = 12374;
 pub const EGL_SURFACE_TYPE: u32 = 12339;
 pub const EGL_NONE: u32 = 12344;
 pub const EGL_CONTEXT_CLIENT_VERSION: u32 = 12440;
+
+pub const EGL_NO_DISPLAY: EGLDisplay = null_mut();
+pub const EGL_NO_SURFACE: EGLSurface = null_mut();
+/// `EGL_DEFAULT_DISPLAY` is the null native display handle: it asks the
+/// driver for whatever display it can provide without a window system, which
+/// is what a headless run wants.
+pub const EGL_DEFAULT_DISPLAY: EGLNativeDisplayType = null_mut();
 
 pub type NativeDisplayType = EGLNativeDisplayType;
 pub type NativePixmapType = EGLNativePixmapType;
