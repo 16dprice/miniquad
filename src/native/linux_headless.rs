@@ -147,9 +147,11 @@ impl std::error::Error for HeadlessError {}
 /// is listening. That failure is what a CI executor with no display hits, and
 /// it looks like a broken driver rather than a missing window system.
 ///
-/// Whichever opens, the initialised `EGLDisplay` is returned and the chosen
-/// route is printed, so a log says which platform answered rather than leaving
-/// a future Mesa change to be guessed at.
+/// Whichever opens, the initialised `EGLDisplay` is returned. Which route
+/// answered is reported only when `MINIQUAD_HEADLESS_VERBOSE` is set: a
+/// headless run's stdout and stderr are usually a test's captured output, and
+/// an unconditional line there is indistinguishable from what the run was
+/// meant to print.
 unsafe fn open_display(egl_lib: &mut egl::LibEgl) -> Result<egl::EGLDisplay, HeadlessError> {
     let get_platform_display: Option<egl::GetPlatformDisplayExt> = {
         let name = std::ffi::CString::new("eglGetPlatformDisplayEXT").unwrap();
@@ -166,7 +168,7 @@ unsafe fn open_display(egl_lib: &mut egl::LibEgl) -> Result<egl::EGLDisplay, Hea
         if display != egl::EGL_NO_DISPLAY
             && (egl_lib.eglInitialize)(display, std::ptr::null_mut(), std::ptr::null_mut()) != 0
         {
-            eprintln!("miniquad: headless EGL on EGL_PLATFORM_SURFACELESS_MESA");
+            report("EGL_PLATFORM_SURFACELESS_MESA");
             return Ok(display);
         }
     }
@@ -178,8 +180,18 @@ unsafe fn open_display(egl_lib: &mut egl::LibEgl) -> Result<egl::EGLDisplay, Hea
     if (egl_lib.eglInitialize)(display, std::ptr::null_mut(), std::ptr::null_mut()) == 0 {
         return Err(HeadlessError::InitializeFailed);
     }
-    eprintln!("miniquad: headless EGL on EGL_DEFAULT_DISPLAY");
+    report("EGL_DEFAULT_DISPLAY");
     Ok(display)
+}
+
+/// Name the EGL platform that answered, but only when asked.
+///
+/// A headless run is normally a child process whose output some test is
+/// reading, so this stays quiet unless `MINIQUAD_HEADLESS_VERBOSE` is set.
+fn report(platform: &str) {
+    if std::env::var_os("MINIQUAD_HEADLESS_VERBOSE").is_some() {
+        eprintln!("miniquad: headless EGL on {platform}");
+    }
 }
 
 /// Make a current GLES2 context with no window system behind it.
